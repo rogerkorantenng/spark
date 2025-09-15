@@ -77,6 +77,27 @@
 
 <div class="tiny" id="status"></div>
 
+
+<hr style="margin:8px 0; border:none; border-top:1px solid #eee;">
+<div style="display:grid; gap:6px;">
+    <div class="row">
+        <label class="flex" style="margin:0; align-items:center; gap:8px;">
+            <input id="agentEnabled" type="checkbox" style="width:auto; margin:0;">
+            Enable Daily Planner Agent
+        </label>
+        <select id="agentFrequency" title="Frequency">
+            <option value="1">Minutes</option>
+            <option value="60">Hourly</option>
+            <option value="180">Every 3 hours</option>
+            <option value="720" selected>Daily</option>
+        </select>
+    </div>
+    <input id="agentTopic" placeholder="Campaign topic (e.g., ‘AI tips for students’)" />
+    <small class="tiny">Agent uses current Platform + Tone + Clean mode</small>
+    <button id="btn-save-agent">Save Agent Settings</button>
+</div>
+
+
 <script src="popup.js" type="module"></script>
 </body>
 </html>

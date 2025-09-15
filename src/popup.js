@@ -5,6 +5,9 @@ const platformEl = document.getElementById("platform");
 const toneEl     = document.getElementById("tone");
 const cleanEl    = document.getElementById("clean");
 const counterEl  = document.getElementById("counter");
+const agentEnabledEl   = document.getElementById("agentEnabled");
+const agentFrequencyEl = document.getElementById("agentFrequency");
+const agentTopicEl     = document.getElementById("agentTopic");
 
 const getSelection = () =>
     new Promise((resolve) => {
@@ -55,6 +58,15 @@ platformEl.addEventListener("change", () => {
 toneEl.addEventListener("change", saveSettings);
 cleanEl.addEventListener("change", saveSettings);
 
+async function promptWithOutput(session, messagesOrText, opts = {}) {
+    const base = { output: { language: "en" } };
+    const options = { ...base, ...opts, output: { language: (opts.output && opts.output.language) || "en" } };
+    return typeof messagesOrText === "string"
+        ? session.prompt(messagesOrText, options)
+        : session.prompt(messagesOrText, options);
+}
+
+
 async function ensurePromptSession(expectedInputs) {
     if (!("LanguageModel" in self)) throw new Error("Prompt API not found in this browser.");
     const avail = await LanguageModel.availability();
@@ -76,10 +88,11 @@ async function ensurePromptSession(expectedInputs) {
 }
 
 async function promptJSON(session, system, user, schema, language = "en") {
-    const res = await session.prompt(
-        [{ role: "system", content: system }, { role: "user", content: user }],
-        { output: { language }, responseConstraint: schema }
+    const res = await promptWithOutput(
+        session,
+        [{ role: "system", content: system }, { role: "user", content: user }]
     );
+
     try { return JSON.parse(res); } catch { return res; }
 }
 
@@ -101,11 +114,17 @@ async function promptJSON(session, system, user, schema, language = "en") {
     } catch (e) { console.error(e); }
 
     // Load saved settings
-    chrome.storage?.local.get(["platform","tone","clean","lastTranslateTarget"], (cfg) => {
-        if (cfg?.platform) platformEl.value = cfg.platform;
-        if (cfg?.tone) toneEl.value = cfg.tone;
-        if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
-    });
+    chrome.storage?.local.get(
+        ["platform","tone","clean","lastTranslateTarget","agentEnabled","agentFrequency","agentTopic"],
+        (cfg) => {
+            if (cfg?.platform) platformEl.value = cfg.platform;
+            if (cfg?.tone) toneEl.value = cfg.tone;
+            if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
+            if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
+            if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
+            if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
+        }
+    );
 })();
 
 function saveSettings(extra = {}) {
@@ -113,10 +132,14 @@ function saveSettings(extra = {}) {
         platform: platformEl.value,
         tone: toneEl.value,
         clean: cleanEl.checked,
+        agentEnabled: agentEnabledEl.checked,
+        agentFrequency: Number(agentFrequencyEl.value || 720),
+        agentTopic: agentTopicEl.value.trim(),
         ...extra
     };
     chrome.storage?.local.set(payload);
 }
+
 
 function withLimit(text) {
     const { limit } = platformHints(platformEl.value);
@@ -150,10 +173,11 @@ document.getElementById("btn-generate").onclick = async () => {
         const system = buildSystemPrompt(tone, hints, clean);
         const user = `Create a ${platform} post from this idea:\n"""${idea}"""`;
 
-        const res = await session.prompt(
-            [{ role: "system", content: system }, { role: "user", content: user }],
-            { output: { language: "en" } }
+        const res = await promptWithOutput(
+            session,
+            [{ role: "system", content: system }, { role: "user", content: user }]
         );
+
         const finalText = withLimit(res);
         outEl.textContent = finalText;
         updateCounter(finalText);
@@ -163,6 +187,25 @@ document.getElementById("btn-generate").onclick = async () => {
         outEl.textContent = `Error: ${e.message}`;
     }
 };
+
+document.getElementById("btn-save-agent").onclick = async () => {
+    saveSettings();
+    // Let background reschedule alarms
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+    statusEl.textContent = "Agent settings saved.";
+    setTimeout(() => (statusEl.textContent = ""), 1200);
+};
+
+agentEnabledEl.addEventListener("change", () => {
+    saveSettings();
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+});
+agentFrequencyEl.addEventListener("change", () => {
+    saveSettings();
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+});
+agentTopicEl.addEventListener("change", saveSettings);
+
 
 document.getElementById("btn-variants").onclick = async () => {
     try {
@@ -237,10 +280,11 @@ document.getElementById("btn-rewrite").onclick = async () => {
         const system = buildSystemPrompt(tone, hints, clean);
         const user = `Rewrite the following text for ${platform} while preserving meaning:\n${text}`;
 
-        const res = await session.prompt(
-            [{ role: "system", content: system }, { role: "user", content: user }],
-            { output: { language: "en" } }
+        const res = await promptWithOutput(
+            session,
+            [{ role: "system", content: system }, { role: "user", content: user }]
         );
+
         const finalText = withLimit(res);
         outEl.textContent = finalText;
         updateCounter(finalText);
@@ -310,8 +354,9 @@ document.getElementById("btn-translate").onclick = async () => {
         if (!text) { outEl.textContent = "Nothing to translate."; return; }
 
         const session = await ensurePromptSession();
-        const res = await session.prompt(
-            `Translate the following text. Output only the translation with no extra commentary:\n${text}`,
+        const res = await promptWithOutput(
+            session,
+            `Translate this:\n${text}`,
             { output: { language: target } }
         );
         outEl.textContent = res;
