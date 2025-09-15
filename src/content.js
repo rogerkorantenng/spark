@@ -1,4 +1,5 @@
 // Capture selected text and provide a simple page text extractor.
+
 let lastSelection = "";
 
 document.addEventListener("selectionchange", () => {

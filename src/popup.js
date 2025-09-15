@@ -1,14 +1,77 @@
-const inputEl  = document.getElementById("input");
-const outEl    = document.getElementById("out");
-const statusEl = document.getElementById("status");
-const platformEl = document.getElementById("platform");
-const toneEl     = document.getElementById("tone");
-const cleanEl    = document.getElementById("clean");
-const counterEl  = document.getElementById("counter");
+// Element refs
+const inputEl     = document.getElementById("input");
+const outEl       = document.getElementById("out");
+const statusEl    = document.getElementById("status");
+const platformEl  = document.getElementById("platform");
+const toneEl      = document.getElementById("tone");
+const cleanEl     = document.getElementById("clean");
+const counterEl   = document.getElementById("counter");
+const spinEl      = document.getElementById("spin");
+
+// Agent refs
 const agentEnabledEl   = document.getElementById("agentEnabled");
 const agentFrequencyEl = document.getElementById("agentFrequency");
 const agentTopicEl     = document.getElementById("agentTopic");
+const draftsEl         = document.getElementById("drafts");
 
+// Theme persistence
+const themeBtns = {
+    auto:  document.getElementById("themeAuto"),
+    light: document.getElementById("themeLight"),
+    dark:  document.getElementById("themeDark"),
+};
+function applyTheme(t) {
+    const html = document.documentElement;
+    html.removeAttribute("data-theme");
+    if (t === "light") html.setAttribute("data-theme","light");
+    if (t === "dark")  html.setAttribute("data-theme","dark");
+    chrome.storage?.local.set({ theme: t });
+}
+chrome.storage?.local.get(["theme"], ({ theme }) => applyTheme(theme || "auto"));
+themeBtns.auto.onclick  = () => applyTheme("auto");
+themeBtns.light.onclick = () => applyTheme("light");
+themeBtns.dark.onclick  = () => applyTheme("dark");
+
+// Spinner / loading + disable buttons
+const allButtons = [...document.querySelectorAll("button")];
+function setLoading(on, msg = "") {
+    statusEl.textContent = on ? (msg || "Working…") : (msg || "Ready");
+    spinEl.style.display = on ? "inline-block" : "none";
+    allButtons.forEach(b => {
+        if (b.id?.startsWith("theme")) return; // leave theme toggles
+        b.disabled = on;
+    });
+}
+
+// Toasts
+const toastEl = document.getElementById("toast");
+let toastTimer;
+function toast(msg, ok=true) {
+    toastEl.textContent = msg;
+    toastEl.style.background = ok ? "var(--fg)" : "var(--warning)";
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 1500);
+}
+
+// Autosize textarea
+function autosize(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 280) + "px";
+}
+inputEl.addEventListener("input", (e)=> autosize(e.target));
+
+// Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+    const mod = (e.ctrlKey || e.metaKey);
+    if (mod && e.key === "Enter")                           { e.preventDefault(); document.getElementById("btn-generate").click(); }
+    if (mod && e.shiftKey && e.key.toLowerCase()==="r")     { e.preventDefault(); document.getElementById("btn-rewrite").click(); }
+    if (mod && e.key.toLowerCase()==="h")                   { e.preventDefault(); document.getElementById("btn-hashtags").click(); }
+    if (mod && e.key.toLowerCase()==="b")                   { e.preventDefault(); document.getElementById("btn-copy").click(); }
+    if (mod && e.key.toLowerCase()==="i")                   { e.preventDefault(); document.getElementById("btn-insert").click(); }
+});
+
+// Messaging helpers
 const getSelection = () =>
     new Promise((resolve) => {
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -33,6 +96,7 @@ const insertToPage = (text) =>
         });
     });
 
+// Platform rules
 function platformHints(platform) {
     switch (platform) {
         case "twitter":  return { limit: 280,  addHashtags: true,  lineBreaks: 0 };
@@ -47,32 +111,20 @@ function updateCounter(text) {
     const { limit } = platformHints(platformEl.value);
     const len = (text || "").length;
     counterEl.textContent = `${len} / ${limit}`;
-    counterEl.style.color = len > limit ? "#b91c1c" : "#444";
+    counterEl.style.color = len > limit ? "var(--warning)" : "var(--muted)";
 }
-
-inputEl.addEventListener("input", () => updateCounter(inputEl.value));
-platformEl.addEventListener("change", () => {
-    saveSettings();
-    updateCounter(outEl.textContent.trim() || inputEl.value);
-});
+updateCounter(inputEl.value);
+platformEl.addEventListener("change", () => { saveSettings(); updateCounter(outEl.textContent.trim() || inputEl.value); });
 toneEl.addEventListener("change", saveSettings);
 cleanEl.addEventListener("change", saveSettings);
+inputEl.addEventListener("input", () => updateCounter(inputEl.value));
 
-async function promptWithOutput(session, messagesOrText, opts = {}) {
-    const base = { output: { language: "en" } };
-    const options = { ...base, ...opts, output: { language: (opts.output && opts.output.language) || "en" } };
-    return typeof messagesOrText === "string"
-        ? session.prompt(messagesOrText, options)
-        : session.prompt(messagesOrText, options);
-}
-
-
+// Prompt API helpers
 async function ensurePromptSession(expectedInputs) {
     if (!("LanguageModel" in self)) throw new Error("Prompt API not found in this browser.");
     const avail = await LanguageModel.availability();
-    statusEl.textContent = `Prompt API availability: ${avail}`;
+    statusEl.textContent = `Prompt API: ${avail}`;
     if (avail === "unavailable") throw new Error("Prompt API unavailable on this device.");
-
     return await LanguageModel.create({
         ...(expectedInputs ? { expectedInputs } : {}),
         monitor(m) {
@@ -86,17 +138,47 @@ async function ensurePromptSession(expectedInputs) {
         }
     });
 }
-
+async function promptWithOutput(session, messagesOrText, opts = {}) {
+    const safe = { ...opts, output: { language: (opts.output && opts.output.language) || "en" } };
+    return typeof messagesOrText === "string"
+        ? session.prompt(messagesOrText, safe)
+        : session.prompt(messagesOrText, safe);
+}
 async function promptJSON(session, system, user, schema, language = "en") {
-    const res = await promptWithOutput(
-        session,
-        [{ role: "system", content: system }, { role: "user", content: user }]
+    const res = await session.prompt(
+        [{ role: "system", content: system }, { role: "user", content: user }],
+        { output: { language }, responseConstraint: schema }
     );
-
     try { return JSON.parse(res); } catch { return res; }
 }
 
-// Init: capabilities + settings
+// Settings (also includes agent fields)
+function saveSettings(extra = {}) {
+    const payload = {
+        platform: platformEl.value,
+        tone: toneEl.value,
+        clean: cleanEl.checked,
+        agentEnabled: agentEnabledEl.checked,
+        agentFrequency: Number(agentFrequencyEl.value || 720),
+        agentTopic: agentTopicEl.value.trim(),
+        ...extra
+    };
+    chrome.storage?.local.set(payload);
+}
+chrome.storage?.local.get(["platform","tone","clean","agentEnabled","agentFrequency","agentTopic"], (cfg) => {
+    if (cfg?.platform) platformEl.value = cfg.platform;
+    if (cfg?.tone)     toneEl.value = cfg.tone;
+    if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
+
+    if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
+    if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
+    if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
+
+    updateCounter(inputEl.value);
+    renderDrafts();
+});
+
+// Capability ping
 (async () => {
     try {
         if ("LanguageModel" in self) {
@@ -112,53 +194,39 @@ async function promptJSON(session, system, user, schema, language = "en") {
             statusEl.textContent += " | Summarizer not detected.";
         }
     } catch (e) { console.error(e); }
-
-    // Load saved settings
-    chrome.storage?.local.get(
-        ["platform","tone","clean","lastTranslateTarget","agentEnabled","agentFrequency","agentTopic"],
-        (cfg) => {
-            if (cfg?.platform) platformEl.value = cfg.platform;
-            if (cfg?.tone) toneEl.value = cfg.tone;
-            if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
-            if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
-            if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
-            if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
-        }
-    );
 })();
 
-function saveSettings(extra = {}) {
-    const payload = {
-        platform: platformEl.value,
-        tone: toneEl.value,
-        clean: cleanEl.checked,
-        agentEnabled: agentEnabledEl.checked,
-        agentFrequency: Number(agentFrequencyEl.value || 720),
-        agentTopic: agentTopicEl.value.trim(),
-        ...extra
-    };
-    chrome.storage?.local.set(payload);
-}
-
-
-function withLimit(text) {
-    const { limit } = platformHints(platformEl.value);
-    if ((text || "").length <= limit) return text;
-    return text.slice(0, limit); // soft trim to stay within cap
-}
-
+// Build system prompt
 function buildSystemPrompt(tone, hints, clean) {
     const cleanLine = clean
-        ? "Ensure brand-safe, professional language; avoid profanity, slurs, sensitive claims, or misleading health/financial advice."
+        ? "Ensure brand-safe, professional language; avoid profanity, slurs, sensitive claims, or misleading advice."
         : "";
     return `You are a social media copywriter. Write in ${tone} tone. Keep within ${hints.limit} characters. ${
         hints.addHashtags ? "Add relevant hashtags." : "Do not include hashtags."
     } Use ${hints.lineBreaks} line breaks. ${cleanLine} Output only the final caption.`;
 }
+function withLimit(text) {
+    const { limit } = platformHints(platformEl.value);
+    if ((text || "").length <= limit) return text;
+    return text.slice(0, limit);
+}
 
-// Buttons
+// Render latest drafts
+async function renderDrafts() {
+    const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
+    if (!drafts.length) { draftsEl.textContent = ""; return; }
+    const d = drafts[0];
+    const when = new Date(d.ts).toLocaleString();
+    draftsEl.innerHTML = `<b>Latest agent drafts</b> (${when})<br><i>${d.topic}</i><br>1) ${d.options?.[0] || ""}<br>2) ${d.options?.[1] || ""}<br>3) ${d.options?.[2] || ""}`;
+}
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.drafts) renderDrafts();
+});
+
+// Handlers — Compose
 document.getElementById("btn-generate").onclick = async () => {
     try {
+        setLoading(true, "Generating…");
         const platform = platformEl.value;
         const tone = toneEl.value;
         const clean = cleanEl.checked;
@@ -177,38 +245,21 @@ document.getElementById("btn-generate").onclick = async () => {
             session,
             [{ role: "system", content: system }, { role: "user", content: user }]
         );
-
         const finalText = withLimit(res);
         outEl.textContent = finalText;
         updateCounter(finalText);
         document.getElementById("variantsBar").style.display = "none";
+        toast("Caption ready");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
-    }
+        toast(e.message, false);
+    } finally { setLoading(false); }
 };
-
-document.getElementById("btn-save-agent").onclick = async () => {
-    saveSettings();
-    // Let background reschedule alarms
-    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
-    statusEl.textContent = "Agent settings saved.";
-    setTimeout(() => (statusEl.textContent = ""), 1200);
-};
-
-agentEnabledEl.addEventListener("change", () => {
-    saveSettings();
-    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
-});
-agentFrequencyEl.addEventListener("change", () => {
-    saveSettings();
-    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
-});
-agentTopicEl.addEventListener("change", saveSettings);
-
 
 document.getElementById("btn-variants").onclick = async () => {
     try {
+        setLoading(true, "Generating variants…");
         const platform = platformEl.value;
         const tone = toneEl.value;
         const clean = cleanEl.checked;
@@ -225,37 +276,28 @@ document.getElementById("btn-variants").onclick = async () => {
 
         const schema = {
             type: "object",
-            properties: {
-                options: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 }
-            },
-            required: ["options"],
-            additionalProperties: false
+            properties: { options: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 } },
+            required: ["options"], additionalProperties: false
         };
 
         const json = await promptJSON(session, system, user, schema, "en");
-        let opts = Array.isArray(json?.options) ? json.options : [];
-        if (opts.length !== 3) {
-            // Fallback: try to split by newline
-            opts = String(json).split(/\n+/).filter(Boolean).slice(0,3);
-            while (opts.length < 3) opts.push("—");
-        }
-        // Trim to limits
+        let opts = Array.isArray(json?.options) ? json.options : String(json).split(/\n+/).filter(Boolean).slice(0,3);
+        while (opts.length < 3) opts.push("—");
         opts = opts.map(withLimit);
 
-        // Stash on window for pickers
         window.__spark_variants = opts;
 
         outEl.textContent = `1) ${opts[0]}\n\n2) ${opts[1]}\n\n3) ${opts[2]}`;
         updateCounter(outEl.textContent.replace(/^1\)\s*/,"").split("\n\n")[0] || "");
         document.getElementById("variantsBar").style.display = "flex";
+        toast("3 variants ready");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
+        toast(e.message, false);
         document.getElementById("variantsBar").style.display = "none";
-    }
+    } finally { setLoading(false); }
 };
-
-// Variant pickers
 ["pick1","pick2","pick3"].forEach((id, idx) => {
     document.getElementById(id).onclick = () => {
         const opts = window.__spark_variants || [];
@@ -268,6 +310,7 @@ document.getElementById("btn-variants").onclick = async () => {
 
 document.getElementById("btn-rewrite").onclick = async () => {
     try {
+        setLoading(true, "Rewriting…");
         const platform = platformEl.value;
         const tone = toneEl.value;
         const clean = cleanEl.checked;
@@ -284,19 +327,21 @@ document.getElementById("btn-rewrite").onclick = async () => {
             session,
             [{ role: "system", content: system }, { role: "user", content: user }]
         );
-
         const finalText = withLimit(res);
         outEl.textContent = finalText;
         updateCounter(finalText);
         document.getElementById("variantsBar").style.display = "none";
+        toast("Rewritten");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
-    }
+        toast(e.message, false);
+    } finally { setLoading(false); }
 };
 
 document.getElementById("btn-hashtags").onclick = async () => {
     try {
+        setLoading(true, "Finding hashtags…");
         const platform = platformEl.value;
         const base = inputEl.value.trim() || outEl.textContent.trim();
         if (!base) { outEl.textContent = "Generate a caption first, then add hashtags."; return; }
@@ -309,19 +354,22 @@ document.getElementById("btn-hashtags").onclick = async () => {
         const system = `Return compact JSON only with a 'tags' array of up to 10 platform-appropriate hashtags. No explanations.`;
         const user = `Suggest hashtags for ${platform} for this text:\n${base}`;
 
-        const json = await promptJSON(session, system, user, schema, "en");
+        const json = await promptJSON(session, system, user, "en");
         const tags = Array.isArray(json?.tags) ? json.tags.map(t => `#${t.replace(/^#/, "")}`) : [];
         outEl.textContent = tags.length ? tags.join(" ") : String(json);
         updateCounter(outEl.textContent);
         document.getElementById("variantsBar").style.display = "none";
+        toast("Hashtags added");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
-    }
+        toast(e.message, false);
+    } finally { setLoading(false); }
 };
 
 document.getElementById("btn-summarize").onclick = async () => {
     try {
+        setLoading(true, "Summarizing…");
         if (!("Summarizer" in self)) { outEl.textContent = "Summarizer API not available in this browser."; return; }
         const { text } = await getPageText();
         if (!text) { outEl.textContent = "No readable text detected on this page."; return; }
@@ -338,58 +386,77 @@ document.getElementById("btn-summarize").onclick = async () => {
         outEl.textContent = combo;
         updateCounter(combo);
         document.getElementById("variantsBar").style.display = "none";
+        toast("Summary ready");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
-    }
+        toast(e.message, false);
+    } finally { setLoading(false); }
 };
 
 document.getElementById("btn-translate").onclick = async () => {
     try {
         const last = (await new Promise(r => chrome.storage?.local.get(["lastTranslateTarget"], r)))?.lastTranslateTarget || "fr";
         const target = prompt("Translate to (e.g., en, es, ja, fr, de, zh):", last) || last;
-        saveSettings({ lastTranslateTarget: target });
+        chrome.storage?.local.set({ lastTranslateTarget: target });
 
+        setLoading(true, `Translating → ${target}…`);
         const text = inputEl.value.trim() || outEl.textContent.trim();
         if (!text) { outEl.textContent = "Nothing to translate."; return; }
 
         const session = await ensurePromptSession();
         const res = await promptWithOutput(
             session,
-            `Translate this:\n${text}`,
+            `Translate the following text. Output only the translation with no extra commentary:\n${text}`,
             { output: { language: target } }
         );
         outEl.textContent = res;
         updateCounter(res);
         document.getElementById("variantsBar").style.display = "none";
+        toast("Translated");
     } catch (e) {
         console.error(e);
         outEl.textContent = `Error: ${e.message}`;
-    }
+        toast(e.message, false);
+    } finally { setLoading(false); }
 };
 
 document.getElementById("btn-copy").onclick = async () => {
     try {
         const text = outEl.textContent.trim();
-        if (!text) { statusEl.textContent = "Nothing to copy."; return; }
+        if (!text) { toast("Nothing to copy", false); return; }
         await navigator.clipboard.writeText(text);
-        statusEl.textContent = "Copied to clipboard.";
-        setTimeout(() => (statusEl.textContent = ""), 1200);
-    } catch (e) {
-        console.error(e);
-        statusEl.textContent = `Copy failed: ${e.message}`;
-    }
+        toast("Copied");
+    } catch (e) { console.error(e); toast("Copy failed", false); }
 };
 
 document.getElementById("btn-insert").onclick = async () => {
     try {
         const text = outEl.textContent.trim();
-        if (!text) { statusEl.textContent = "Nothing to insert."; return; }
+        if (!text) { toast("Nothing to insert", false); return; }
         const { success } = await insertToPage(text);
-        statusEl.textContent = success ? "Inserted into page." : "Focus a text field first, then try again.";
-        setTimeout(() => (statusEl.textContent = ""), 1500);
-    } catch (e) {
-        console.error(e);
-        statusEl.textContent = `Insert failed: ${e.message}`;
-    }
+        toast(success ? "Inserted into page" : "Focus a text field first", success);
+    } catch (e) { console.error(e); toast("Insert failed", false); }
 };
+
+// Agent controls
+document.getElementById("btn-save-agent").onclick = async () => {
+    saveSettings();
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+    toast("Agent settings saved");
+};
+document.getElementById("btn-run-agent").onclick = async () => {
+    // Ask background to run once immediately
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RUN_ONCE" }, (resp) => {
+        toast(resp?.ok ? "Agent run started" : (resp?.error || "Agent run failed"), !!resp?.ok);
+    });
+};
+agentEnabledEl.addEventListener("change", () => {
+    saveSettings();
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+});
+agentFrequencyEl.addEventListener("change", () => {
+    saveSettings();
+    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
+});
+agentTopicEl.addEventListener("change", saveSettings);
