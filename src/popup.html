@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Spark</title>
+    <style>
+        body { font-family: system-ui, Arial, sans-serif; padding: 10px; width: 360px; }
+        h1 { font-size: 18px; margin-bottom: 10px; }
+        label { font-weight: 600; display: block; margin: 8px 0 4px; }
+        textarea, select, button, input[type="checkbox"] { width: 100%; margin-bottom: 8px; }
+        textarea { resize: vertical; }
+        pre, #out { background: #f5f5f5; padding: 8px; white-space: pre-wrap; border-radius: 6px; min-height: 48px; }
+        .row { display: flex; gap: 6px; }
+        .row select, .row input { flex: 1; }
+        button { padding: 8px; border-radius: 6px; border: 1px solid #ddd; cursor: pointer; }
+        button:hover { background: #f0f0f0; }
+        .tiny { font-size: 12px; color: #666; margin-top: 6px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .tools { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .flex { display: flex; align-items: center; gap: 8px; }
+        #counter { font-size: 12px; color: #444; text-align: right; margin-top: -4px; margin-bottom: 8px; }
+        #variantsBar { display: none; gap: 6px; margin-top: 6px; }
+        #variantsBar button { padding: 4px 6px; font-size: 12px; }
+    </style>
+</head>
+<body>
+<h1>Spark</h1>
+
+<label for="input">Idea or text</label>
+<textarea id="input" rows="5" placeholder="Paste your idea or select text on a page…"></textarea>
+
+<div class="row">
+    <select id="platform" title="Platform">
+        <option value="twitter">X/Twitter</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="instagram">Instagram</option>
+        <option value="tiktok">TikTok</option>
+    </select>
+
+    <select id="tone" title="Tone">
+        <option value="punchy">Punchy</option>
+        <option value="professional">Professional</option>
+        <option value="witty">Witty</option>
+        <option value="concise">Concise</option>
+    </select>
+</div>
+
+<div class="flex">
+    <label class="flex" style="margin:0;">
+        <input id="clean" type="checkbox" style="width:auto; margin:0;"> Clean (brand-safe)
+    </label>
+    <div id="counter" style="margin-left:auto;">0 / 280</div>
+</div>
+
+<div class="controls">
+    <button id="btn-generate">Generate</button>
+    <button id="btn-variants">Generate 3</button>
+    <button id="btn-rewrite">Rewrite</button>
+    <button id="btn-hashtags">Hashtags</button>
+</div>
+
+<div class="tools" style="margin-top:6px;">
+    <button id="btn-summarize">Summarize page</button>
+    <button id="btn-translate">Translate…</button>
+    <button id="btn-copy">Copy</button>
+</div>
+
+<button id="btn-insert">Insert into page</button>
+
+<div id="out"></div>
+<div id="variantsBar">
+    <span class="tiny">Pick a variant:</span>
+    <button id="pick1">1</button>
+    <button id="pick2">2</button>
+    <button id="pick3">3</button>
+</div>
+
+<div class="tiny" id="status"></div>
+
+<script src="popup.js" type="module"></script>
+</body>
+</html>
