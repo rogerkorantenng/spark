@@ -7,41 +7,41 @@
         :root{
             --bg:#ffffff; --fg:#0f172a; --muted:#6b7280; --card:#f8fafc; --line:#e5e7eb;
             --btn:#0ea5e9; --btn-fg:#ffffff; --btn-hover:#0284c7; --warning:#b91c1c; --ok:#059669;
+            --accent:#22c55e;
         }
         @media (prefers-color-scheme: dark){
             :root{ --bg:#0b0f19; --fg:#e5e7eb; --muted:#94a3b8; --card:#0f172a; --line:#1f2937;
-                --btn:#0284c7; --btn-fg:#e5e7eb; --btn-hover:#0369a1; --warning:#ef4444; --ok:#10b981; }
+                --btn:#0284c7; --btn-fg:#e5e7eb; --btn-hover:#0369a1; --warning:#ef4444; --ok:#10b981; --accent:#10b981; }
         }
         [data-theme="light"]{ --bg:#ffffff; --fg:#0f172a; --muted:#6b7280; --card:#f8fafc; --line:#e5e7eb;
-            --btn:#0ea5e9; --btn-fg:#ffffff; --btn-hover:#0284c7; --warning:#b91c1c; --ok:#059669;}
+            --btn:#0ea5e9; --btn-fg:#ffffff; --btn-hover:#0284c7; --warning:#b91c1c; --ok:#059669; --accent:#22c55e;}
         [data-theme="dark"]{ --bg:#0b0f19; --fg:#e5e7eb; --muted:#94a3b8; --card:#0f172a; --line:#1f2937;
-            --btn:#0284c7; --btn-fg:#e5e7eb; --btn-hover:#0369a1; --warning:#ef4444; --ok:#10b981;}
+            --btn:#0284c7; --btn-fg:#e5e7eb; --btn-hover:#0369a1; --warning:#ef4444; --ok:#10b981; --accent:#10b981;}
 
         html,body{ margin:0; padding:0; }
-        body{ font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--fg); width: 380px; }
+        body{ font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--fg); width: 400px; }
         .wrap{ padding:12px; display:flex; flex-direction:column; gap:10px; }
-        .topbar{ display:flex; align-items:center; justify-content:space-between; }
-        h1{ font-size:16px; margin:0; }
-        .theme{ display:flex; align-items:center; gap:6px; color:var(--muted); }
-        .theme button{ border:1px solid var(--line); background:transparent; color:var(--muted);
-            border-radius:8px; padding:4px 8px; cursor:pointer; }
-        .theme button:hover{ color:var(--fg); border-color:var(--fg); }
 
-        .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; }
+        .topbar{ display:flex; align-items:center; justify-content:space-between; }
+        h1{ font-size:16px; margin:0; display:flex; align-items:center; gap:8px; }
+        .badge{ font-size:10px; color:var(--btn-fg); background:var(--btn); padding:2px 6px; border-radius:999px; }
+
+        .tabs{ display:flex; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:4px; }
+        .tab{ flex:1; text-align:center; padding:8px; border-radius:10px; cursor:pointer; color:var(--muted); user-select:none; }
+        .tab.active{ background:var(--bg); color:var(--fg); border:1px solid var(--line); }
+
+        .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
         .row{ display:flex; gap:8px; }
         .row > *{ flex:1; }
         label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
 
         textarea, select, input[type="text"]{
             width:100%; border:1px solid var(--line); background:transparent; color:var(--fg);
-            border-radius:10px; padding:8px; outline:none;
+            border-radius:10px; padding:10px; outline:none;
         }
         textarea{ min-height:88px; resize:vertical; }
 
-        .switchline{ display:flex; align-items:center; gap:8px; justify-content:space-between; }
         .muted{ color:var(--muted); font-size:12px; }
-        #counter{ font-size:12px; color:var(--muted); }
-
         .actions{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
         .actions-2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 
@@ -50,119 +50,180 @@
         button.ghost{ border:1px solid var(--line); background:transparent; color:var(--fg); border-radius:10px; padding:10px; cursor:pointer; }
         button:disabled{ opacity:.6; cursor:not-allowed; }
 
-        #out{ white-space:pre-wrap; background:var(--bg); border:1px dashed var(--line); border-radius:10px; padding:10px; min-height:56px; }
-        #variantsBar{ display:none; gap:6px; margin-top:6px; }
-        #variantsBar button{ padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--fg); font-size:12px; cursor:pointer; }
+        #out{ white-space:pre-wrap; background:var(--bg); border:1px dashed var(--line); border-radius:10px; padding:10px; min-height:64px; }
 
-        .status{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px; }
-        .spinner{ width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--btn); border-radius:50%; display:inline-block; animation:spin .8s linear infinite; }
+        /* Variants bar */
+        #variantsBar{ display:none; gap:6px; margin-top:8px; flex-wrap:wrap; }
+        #variantsBar button{
+            padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:transparent;
+            color:var(--fg); font-size:12px; cursor:pointer;
+        }
+
+        /* Status + spinner */
+        .statusline{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .status{ font-size:12px; color:var(--muted); }
+        .spinner{ width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--btn); border-radius:50%; display:none; animation:spin .8s linear infinite; }
         @keyframes spin{ to{ transform:rotate(360deg); } }
+
+        /* Char meter */
+        .meter{ height:6px; background:var(--line); border-radius:999px; overflow:hidden; }
+        .meter > .bar{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--btn)); transition:width .15s ease; }
+
+        .section-title{ font-size:12px; color:var(--muted); margin:0 0 6px 0; text-transform:uppercase; letter-spacing:.04em; }
+
+        .theme{ display:flex; align-items:center; gap:6px; }
+        .theme button{ border:1px solid var(--line); background:transparent; color:var(--muted);
+            border-radius:8px; padding:4px 8px; cursor:pointer; }
+        .theme button:hover{ color:var(--fg); border-color:var(--fg); }
 
         .toast{ position:fixed; inset:auto 12px 12px auto; background:var(--fg); color:var(--bg);
             padding:8px 10px; border-radius:10px; font-size:12px; opacity:0; transform:translateY(6px);
             transition:.25s; }
         .toast.show{ opacity:1; transform:translateY(0); }
-        .error{ color:var(--warning); }
-
-        .section-title{ font-size:12px; color:var(--muted); margin:4px 0; text-transform:uppercase; letter-spacing:.04em; }
     </style>
 </head>
 <body>
 <div class="wrap" id="root">
     <div class="topbar">
-        <h1>⚡ Spark</h1>
+        <h1>⚡ Spark <span class="badge">AI Socials</span></h1>
         <div class="theme">
-            <span class="muted">Theme</span>
             <button id="themeAuto">Auto</button>
             <button id="themeLight">Light</button>
             <button id="themeDark">Dark</button>
         </div>
     </div>
 
-    <div class="card">
-        <div class="section-title">Input</div>
-        <label for="input">Idea or text</label>
-        <textarea id="input" placeholder="Paste your idea or select text on a page…"></textarea>
+    <div class="tabs">
+        <div class="tab active" data-view="compose">Compose</div>
+        <div class="tab" data-view="agent">Agent</div>
+        <div class="tab" data-view="drafts">Drafts</div>
+        <div class="tab" data-view="settings">Settings</div>
+    </div>
 
-        <div class="row">
-            <div>
-                <label>Platform</label>
-                <select id="platform">
-                    <option value="twitter">X/Twitter</option>
-                    <option value="linkedin">LinkedIn</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="tiktok">TikTok</option>
+    <!-- Compose -->
+    <section id="view-compose">
+        <div class="card">
+            <div class="section-title">Input</div>
+            <label for="input">Idea or text</label>
+            <textarea id="input" placeholder="Paste your idea or select text on a page…"></textarea>
+
+            <div class="row" style="margin-top:8px;">
+                <div>
+                    <label>Platform</label>
+                    <select id="platform">
+                        <option value="twitter">X/Twitter</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="tiktok">TikTok</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Tone</label>
+                    <select id="tone">
+                        <option value="punchy">Punchy</option>
+                        <option value="professional">Professional</option>
+                        <option value="witty">Witty</option>
+                        <option value="concise">Concise</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row" style="align-items:center; margin-top:8px;">
+                <label class="muted" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; margin:0;">
+                    <input id="clean" type="checkbox" style="width:auto;"> Clean (brand-safe)
+                </label>
+                <div style="flex:1;">
+                    <div class="meter"><div id="meterBar" class="bar"></div></div>
+                    <div class="muted" id="counter" style="text-align:right; margin-top:4px;">0 / 280</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Create</div>
+            <div class="actions">
+                <button class="primary" id="btn-generate" title="Ctrl/⌘ + Enter">Generate</button>
+                <button class="ghost"   id="btn-variants">Generate 3</button>
+                <button class="ghost"   id="btn-rewrite"  title="Ctrl/⌘ + Shift + R">Rewrite</button>
+            </div>
+            <div class="actions" style="margin-top:8px;">
+                <button class="ghost" id="btn-hashtags" title="Ctrl/⌘ + H">Hashtags</button>
+                <button class="ghost" id="btn-summarize">Summarize page</button>
+                <button class="ghost" id="btn-translate">Translate…</button>
+            </div>
+            <div class="actions-2" style="margin-top:8px;">
+                <button class="ghost" id="btn-copy" title="Ctrl/⌘ + B">Copy</button>
+                <button class="ghost" id="btn-insert" title="Ctrl/⌘ + I">Insert</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Output</div>
+            <div id="out"></div>
+            <div id="variantsBar">
+                <span class="muted" style="margin-right:4px;">Pick:</span>
+                <button id="pick1">1</button>
+                <button id="pick2">2</button>
+                <button id="pick3">3</button>
+            </div>
+            <div class="statusline" style="margin-top:8px;">
+                <span id="status" class="status">Ready</span>
+                <span id="spin" class="spinner"></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Agent -->
+    <section id="view-agent" style="display:none;">
+        <div class="card">
+            <div class="section-title">Agent</div>
+            <div class="row" style="align-items:center;">
+                <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0; flex:1;">
+                    <input id="agentEnabled" type="checkbox" style="width:auto;"> Enable Daily Planner Agent
+                </label>
+                <select id="agentFrequency" title="Frequency" style="max-width:160px;">
+                    <option value="60">Hourly</option>
+                    <option value="180">Every 3 hours</option>
+                    <option value="720" selected>Daily</option>
                 </select>
             </div>
-            <div>
-                <label>Tone</label>
-                <select id="tone">
-                    <option value="punchy">Punchy</option>
-                    <option value="professional">Professional</option>
-                    <option value="witty">Witty</option>
-                    <option value="concise">Concise</option>
-                </select>
+            <input id="agentTopic" placeholder="Campaign topic (e.g., ‘AI tips for students’)" style="margin-top:8px;" />
+            <div class="actions-2" style="margin-top:8px;">
+                <button class="primary" id="btn-save-agent">Save Agent Settings</button>
+                <button class="ghost"   id="btn-run-agent">Run now</button>
             </div>
         </div>
 
-        <div class="switchline">
-            <label class="muted"><input id="clean" type="checkbox" style="vertical-align:middle; margin-right:6px;"> Clean (brand-safe)</label>
-            <div id="counter">0 / 280</div>
+        <div class="card">
+            <div class="section-title">Latest Drafts</div>
+            <div id="drafts" class="muted"></div>
         </div>
-    </div>
+    </section>
 
-    <div class="card">
-        <div class="section-title">Create</div>
-        <div class="actions">
-            <button class="primary" id="btn-generate" title="Ctrl/⌘ + Enter">Generate</button>
-            <button class="ghost"   id="btn-variants">Generate 3</button>
-            <button class="ghost"   id="btn-rewrite"  title="Ctrl/⌘ + Shift + R">Rewrite</button>
+    <!-- Drafts -->
+    <section id="view-drafts" style="display:none;">
+        <div class="card">
+            <div class="section-title">Recent Drafts</div>
+            <div id="draftsList" class="muted">No drafts yet.</div>
         </div>
-        <div class="actions" style="margin-top:8px;">
-            <button class="ghost" id="btn-hashtags" title="Ctrl/⌘ + H">Hashtags</button>
-            <button class="ghost" id="btn-summarize">Summarize page</button>
-            <button class="ghost" id="btn-translate">Translate…</button>
-        </div>
-        <div class="actions-2" style="margin-top:8px;">
-            <button class="ghost" id="btn-copy" title="Ctrl/⌘ + B">Copy</button>
-            <button class="ghost" id="btn-insert" title="Ctrl/⌘ + I">Insert into page</button>
-        </div>
-    </div>
+    </section>
 
-    <div class="card">
-        <div class="section-title">Agent</div>
-        <div class="row" style="align-items:center;">
-            <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0;">
-                <input id="agentEnabled" type="checkbox" style="width:auto;"> Enable Daily Planner Agent
-            </label>
-            <select id="agentFrequency" title="Frequency">
-                <option value="60">Hourly</option>
-                <option value="180">Every 3 hours</option>
-                <option value="720" selected>Daily</option>
-            </select>
+    <!-- Settings -->
+    <section id="view-settings" style="display:none;">
+        <div class="card">
+            <div class="section-title">Appearance</div>
+            <div class="row">
+                <button id="themeAuto"  class="ghost">Auto</button>
+                <button id="themeLight" class="ghost">Light</button>
+                <button id="themeDark"  class="ghost">Dark</button>
+            </div>
+            <div class="muted" style="margin-top:6px;">Spark follows your system theme by default.</div>
         </div>
-        <input id="agentTopic" placeholder="Campaign topic (e.g., ‘AI tips for students’)" />
-        <div class="actions-2">
-            <button class="primary" id="btn-save-agent">Save Agent Settings</button>
-            <button class="ghost"   id="btn-run-agent">Run now</button>
+        <div class="card">
+            <div class="section-title">About</div>
+            <div class="muted">Built for the Google Chrome Built-in AI Challenge. Powered by on-device models.</div>
         </div>
-        <div id="drafts" class="muted" style="margin-top:6px;"></div>
-    </div>
-
-    <div class="card">
-        <div class="section-title">Output</div>
-        <div id="out"></div>
-        <div id="variantsBar">
-            <span class="muted">Pick a variant:</span>
-            <button id="pick1">1</button>
-            <button id="pick2">2</button>
-            <button id="pick3">3</button>
-        </div>
-        <div class="status">
-            <span id="status" class="muted">Ready</span>
-            <span id="spin" class="spinner" style="display:none;"></span>
-        </div>
-    </div>
+    </section>
 </div>
 
 <div id="toast" class="toast">Copied</div>

@@ -1,4 +1,4 @@
-// Element refs
+// ===== Element refs (compose) =====
 const inputEl     = document.getElementById("input");
 const outEl       = document.getElementById("out");
 const statusEl    = document.getElementById("status");
@@ -6,20 +6,26 @@ const platformEl  = document.getElementById("platform");
 const toneEl      = document.getElementById("tone");
 const cleanEl     = document.getElementById("clean");
 const counterEl   = document.getElementById("counter");
+const meterBarEl  = document.getElementById("meterBar");
 const spinEl      = document.getElementById("spin");
 
-// Agent refs
-const agentEnabledEl   = document.getElementById("agentEnabled");
-const agentFrequencyEl = document.getElementById("agentFrequency");
-const agentTopicEl     = document.getElementById("agentTopic");
-const draftsEl         = document.getElementById("drafts");
-
-// Theme persistence
-const themeBtns = {
-    auto:  document.getElementById("themeAuto"),
-    light: document.getElementById("themeLight"),
-    dark:  document.getElementById("themeDark"),
+// ===== Tabs =====
+const tabs = [...document.querySelectorAll(".tab")];
+const views = {
+    compose: document.getElementById("view-compose"),
+    agent:   document.getElementById("view-agent"),
+    drafts:  document.getElementById("view-drafts"),
+    settings:document.getElementById("view-settings"),
 };
+function showView(name){
+    Object.entries(views).forEach(([k,el]) => el.style.display = (k===name) ? "" : "none");
+    tabs.forEach(t => t.classList.toggle("active", t.dataset.view===name));
+    chrome.storage?.local.set({ lastView: name });
+}
+chrome.storage?.local.get(["lastView"], ({ lastView }) => showView(lastView || "compose"));
+tabs.forEach(t => t.addEventListener("click", () => showView(t.dataset.view)));
+
+// ===== Theme =====
 function applyTheme(t) {
     const html = document.documentElement;
     html.removeAttribute("data-theme");
@@ -28,22 +34,22 @@ function applyTheme(t) {
     chrome.storage?.local.set({ theme: t });
 }
 chrome.storage?.local.get(["theme"], ({ theme }) => applyTheme(theme || "auto"));
-themeBtns.auto.onclick  = () => applyTheme("auto");
-themeBtns.light.onclick = () => applyTheme("light");
-themeBtns.dark.onclick  = () => applyTheme("dark");
+document.getElementById("themeAuto").onclick  = () => applyTheme("auto");
+document.getElementById("themeLight").onclick = () => applyTheme("light");
+document.getElementById("themeDark").onclick  = () => applyTheme("dark");
 
-// Spinner / loading + disable buttons
+// ===== Spinner / buttons lock =====
 const allButtons = [...document.querySelectorAll("button")];
 function setLoading(on, msg = "") {
     statusEl.textContent = on ? (msg || "Working…") : (msg || "Ready");
     spinEl.style.display = on ? "inline-block" : "none";
     allButtons.forEach(b => {
-        if (b.id?.startsWith("theme")) return; // leave theme toggles
+        if (b.id?.startsWith("theme")) return; // keep theme usable
         b.disabled = on;
     });
 }
 
-// Toasts
+// ===== Toasts =====
 const toastEl = document.getElementById("toast");
 let toastTimer;
 function toast(msg, ok=true) {
@@ -54,14 +60,14 @@ function toast(msg, ok=true) {
     toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 1500);
 }
 
-// Autosize textarea
+// ===== Autosize textarea =====
 function autosize(el) {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 280) + "px";
 }
 inputEl.addEventListener("input", (e)=> autosize(e.target));
 
-// Keyboard shortcuts
+// ===== Shortcuts =====
 document.addEventListener("keydown", (e) => {
     const mod = (e.ctrlKey || e.metaKey);
     if (mod && e.key === "Enter")                           { e.preventDefault(); document.getElementById("btn-generate").click(); }
@@ -71,7 +77,7 @@ document.addEventListener("keydown", (e) => {
     if (mod && e.key.toLowerCase()==="i")                   { e.preventDefault(); document.getElementById("btn-insert").click(); }
 });
 
-// Messaging helpers
+// ===== Messaging helpers =====
 const getSelection = () =>
     new Promise((resolve) => {
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -96,7 +102,7 @@ const insertToPage = (text) =>
         });
     });
 
-// Platform rules
+// ===== Platform rules & counters =====
 function platformHints(platform) {
     switch (platform) {
         case "twitter":  return { limit: 280,  addHashtags: true,  lineBreaks: 0 };
@@ -106,12 +112,13 @@ function platformHints(platform) {
         default:         return { limit: 280,  addHashtags: true,  lineBreaks: 0 };
     }
 }
-
 function updateCounter(text) {
     const { limit } = platformHints(platformEl.value);
     const len = (text || "").length;
     counterEl.textContent = `${len} / ${limit}`;
-    counterEl.style.color = len > limit ? "var(--warning)" : "var(--muted)";
+    const pct = Math.max(0, Math.min(100, Math.round((len/limit)*100)));
+    meterBarEl.style.width = pct + "%";
+    meterBarEl.style.background = (len > limit) ? "var(--warning)" : "linear-gradient(90deg,var(--accent),var(--btn))";
 }
 updateCounter(inputEl.value);
 platformEl.addEventListener("change", () => { saveSettings(); updateCounter(outEl.textContent.trim() || inputEl.value); });
@@ -119,7 +126,7 @@ toneEl.addEventListener("change", saveSettings);
 cleanEl.addEventListener("change", saveSettings);
 inputEl.addEventListener("input", () => updateCounter(inputEl.value));
 
-// Prompt API helpers
+// ===== Prompt API helpers =====
 async function ensurePromptSession(expectedInputs) {
     if (!("LanguageModel" in self)) throw new Error("Prompt API not found in this browser.");
     const avail = await LanguageModel.availability();
@@ -152,33 +159,43 @@ async function promptJSON(session, system, user, schema, language = "en") {
     try { return JSON.parse(res); } catch { return res; }
 }
 
-// Settings (also includes agent fields)
+// ===== Settings (also agent fields) =====
+const agentEnabledEl   = document.getElementById("agentEnabled");
+const agentFrequencyEl = document.getElementById("agentFrequency");
+const agentTopicEl     = document.getElementById("agentTopic");
+const draftsEl         = document.getElementById("drafts");
+const draftsListEl     = document.getElementById("draftsList");
+
 function saveSettings(extra = {}) {
     const payload = {
         platform: platformEl.value,
         tone: toneEl.value,
         clean: cleanEl.checked,
-        agentEnabled: agentEnabledEl.checked,
-        agentFrequency: Number(agentFrequencyEl.value || 720),
-        agentTopic: agentTopicEl.value.trim(),
+        agentEnabled: agentEnabledEl?.checked ?? false,
+        agentFrequency: Number(agentFrequencyEl?.value || 720),
+        agentTopic: agentTopicEl?.value?.trim?.() || "",
         ...extra
     };
     chrome.storage?.local.set(payload);
 }
-chrome.storage?.local.get(["platform","tone","clean","agentEnabled","agentFrequency","agentTopic"], (cfg) => {
-    if (cfg?.platform) platformEl.value = cfg.platform;
-    if (cfg?.tone)     toneEl.value = cfg.tone;
-    if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
+chrome.storage?.local.get(
+    ["platform","tone","clean","agentEnabled","agentFrequency","agentTopic"],
+    (cfg) => {
+        if (cfg?.platform) platformEl.value = cfg.platform;
+        if (cfg?.tone)     toneEl.value = cfg.tone;
+        if (typeof cfg?.clean === "boolean") cleanEl.checked = cfg.clean;
 
-    if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
-    if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
-    if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
+        if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
+        if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
+        if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
 
-    updateCounter(inputEl.value);
-    renderDrafts();
-});
+        updateCounter(inputEl.value);
+        renderDrafts();
+        renderDraftsList();
+    }
+);
 
-// Capability ping
+// ===== Capability ping =====
 (async () => {
     try {
         if ("LanguageModel" in self) {
@@ -196,7 +213,7 @@ chrome.storage?.local.get(["platform","tone","clean","agentEnabled","agentFreque
     } catch (e) { console.error(e); }
 })();
 
-// Build system prompt
+// ===== Build prompt helpers =====
 function buildSystemPrompt(tone, hints, clean) {
     const cleanLine = clean
         ? "Ensure brand-safe, professional language; avoid profanity, slurs, sensitive claims, or misleading advice."
@@ -211,19 +228,32 @@ function withLimit(text) {
     return text.slice(0, limit);
 }
 
-// Render latest drafts
+// ===== Drafts renderers =====
 async function renderDrafts() {
     const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
-    if (!drafts.length) { draftsEl.textContent = ""; return; }
+    if (!drafts.length) { draftsEl.textContent = "No drafts yet."; return; }
     const d = drafts[0];
     const when = new Date(d.ts).toLocaleString();
-    draftsEl.innerHTML = `<b>Latest agent drafts</b> (${when})<br><i>${d.topic}</i><br>1) ${d.options?.[0] || ""}<br>2) ${d.options?.[1] || ""}<br>3) ${d.options?.[2] || ""}`;
+    draftsEl.innerHTML = `<b>${d.topic}</b> — <span class="muted">${when}</span><br>1) ${d.options?.[0] || ""}<br>2) ${d.options?.[1] || ""}<br>3) ${d.options?.[2] || ""}`;
+}
+async function renderDraftsList() {
+    const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
+    if (!drafts.length) { draftsListEl.textContent = "No drafts yet."; return; }
+    draftsListEl.innerHTML = drafts.slice(0,6).map(d => {
+        const when = new Date(d.ts).toLocaleString();
+        const platform = d.platform || "post";
+        const one = (d.options?.[0] || "").replace(/\n/g," ");
+        return `<div style="padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:6px;">
+      <div style="font-size:12px;color:var(--muted);">${when} • ${platform}</div>
+      <div style="margin-top:4px;">${one || "<i>Empty</i>"}</div>
+    </div>`;
+    }).join("");
 }
 chrome.storage.onChanged.addListener((changes) => {
-    if (changes.drafts) renderDrafts();
+    if (changes.drafts) { renderDrafts(); renderDraftsList(); }
 });
 
-// Handlers — Compose
+// ===== Handlers — Compose =====
 document.getElementById("btn-generate").onclick = async () => {
     try {
         setLoading(true, "Generating…");
@@ -354,7 +384,7 @@ document.getElementById("btn-hashtags").onclick = async () => {
         const system = `Return compact JSON only with a 'tags' array of up to 10 platform-appropriate hashtags. No explanations.`;
         const user = `Suggest hashtags for ${platform} for this text:\n${base}`;
 
-        const json = await promptJSON(session, system, user, "en");
+        const json = await promptJSON(session, system, user, schema, "en");
         const tags = Array.isArray(json?.tags) ? json.tags.map(t => `#${t.replace(/^#/, "")}`) : [];
         outEl.textContent = tags.length ? tags.join(" ") : String(json);
         updateCounter(outEl.textContent);
@@ -439,14 +469,13 @@ document.getElementById("btn-insert").onclick = async () => {
     } catch (e) { console.error(e); toast("Insert failed", false); }
 };
 
-// Agent controls
+// ===== Agent controls =====
 document.getElementById("btn-save-agent").onclick = async () => {
     saveSettings();
     chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
     toast("Agent settings saved");
 };
 document.getElementById("btn-run-agent").onclick = async () => {
-    // Ask background to run once immediately
     chrome.runtime.sendMessage({ type: "SPARK_AGENT_RUN_ONCE" }, (resp) => {
         toast(resp?.ok ? "Agent run started" : (resp?.error || "Agent run failed"), !!resp?.ok);
     });
