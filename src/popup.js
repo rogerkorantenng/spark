@@ -1,17 +1,33 @@
+// Detect full-page context and switch layout
+// Detect full-page context ONLY when explicitly requested via hash
+(function setFullpageIfNeeded(){
+    const hash = (location.hash || "").toLowerCase();
+    if (hash.includes("drafts") || hash.includes("full")) {
+        document.documentElement.setAttribute("data-fullpage", "1");
+    } else {
+        document.documentElement.removeAttribute("data-fullpage");
+    }
+})();
+
+
 // ===== Tabs =====
 const tabs = [...document.querySelectorAll(".tab")];
 const views = {
-    compose: document.getElementById("view-compose"),
-    agent:   document.getElementById("view-agent"),
-    drafts:  document.getElementById("view-drafts"),
-    settings:document.getElementById("view-settings"),
+    compose:  document.getElementById("view-compose"),
+    agent:    document.getElementById("view-agent"),
+    drafts:   document.getElementById("view-drafts"),
+    settings: document.getElementById("view-settings"),
 };
 function showView(name){
     Object.entries(views).forEach(([k,el]) => el.style.display = (k===name) ? "" : "none");
     tabs.forEach(t => t.classList.toggle("active", t.dataset.view===name));
     chrome.storage?.local.set({ lastView: name });
 }
-chrome.storage?.local.get(["lastView"], ({ lastView }) => showView(lastView || "compose"));
+chrome.storage?.local.get(["lastView"], ({ lastView }) => {
+    // If we landed with #drafts, force Drafts view (useful when agent opens in a tab)
+    if (location.hash === "#drafts") return showView("drafts");
+    showView(lastView || "compose");
+});
 tabs.forEach(t => t.addEventListener("click", () => showView(t.dataset.view)));
 
 // ===== Theme =====
@@ -43,13 +59,16 @@ const agentEnabledEl   = document.getElementById("agentEnabled");
 const agentFrequencyEl = document.getElementById("agentFrequency");
 const agentTopicEl     = document.getElementById("agentTopic");
 const draftsEl         = document.getElementById("drafts");
+
+// ===== Drafts page refs =====
 const draftsListEl     = document.getElementById("draftsList");
+const btnDeleteAll     = document.getElementById("btn-delete-all");
 
 // ===== Post settings refs =====
-const postMethodEl = document.getElementById("postMethod");
-const autoPostEl   = document.getElementById("autoPost");
-const xStatusEl    = document.getElementById("xStatus");
-const btnConnectX  = document.getElementById("btn-connect-x");
+const postMethodEl   = document.getElementById("postMethod");
+const autoPostEl     = document.getElementById("autoPost");
+const xStatusEl      = document.getElementById("xStatus");
+const btnConnectX    = document.getElementById("btn-connect-x");
 const btnDisconnectX = document.getElementById("btn-disconnect-x");
 
 // ===== Spinner / buttons lock =====
@@ -147,9 +166,7 @@ async function ensurePromptSession(expectedInputs) {
                 const pct = Math.round(e.loaded * 100);
                 statusEl.textContent = `Downloading model… ${pct}%`;
             });
-            m.addEventListener("downloadcomplete", () => {
-                statusEl.textContent = "Model downloaded.";
-            });
+            m.addEventListener("downloadcomplete", () => { statusEl.textContent = "Model downloaded."; });
         }
     });
 }
@@ -200,12 +217,12 @@ chrome.storage?.local.get(
         xStatusEl.textContent = cfg?.xConnected ? `Connected${cfg.xUser ? " as @" + cfg.xUser : ""}` : "Not connected";
 
         updateCounter(inputEl.value);
-        renderDrafts();
+        renderLatestDraft();
         renderDraftsList();
     }
 );
 
-// ===== Capability ping =====
+// Capability ping (status footer)
 (async () => {
     try {
         if ("LanguageModel" in self) {
@@ -238,37 +255,113 @@ function withLimit(text) {
     return text.slice(0, limit);
 }
 
-// ===== Drafts renderers =====
-async function renderDrafts() {
+// ===== Drafts (Agent panel preview) =====
+async function renderLatestDraft() {
     const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
     if (!drafts.length) { draftsEl.textContent = "No drafts yet."; return; }
     const d = drafts[0];
     const when = new Date(d.ts).toLocaleString();
     draftsEl.innerHTML = `<b>${d.topic}</b> — <span class="muted">${when}</span><br>1) ${d.options?.[0] || ""}<br>2) ${d.options?.[1] || ""}<br>3) ${d.options?.[2] || ""}`;
 }
+
+// ===== Drafts Manager (full list with actions) =====
 async function renderDraftsList() {
     const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
     if (!drafts.length) { draftsListEl.textContent = "No drafts yet."; return; }
-    draftsListEl.innerHTML = drafts.slice(0,6).map(d => {
+
+    draftsListEl.classList.add("draft-grid");
+    draftsListEl.innerHTML = drafts.map((d, idx) => {
         const when = new Date(d.ts).toLocaleString();
-        const platform = d.platform || "post";
-        const one = (d.options?.[0] || "").replace(/\n/g," ");
-        return `<div style="padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:6px;">
-      <div style="font-size:12px;color:var(--muted);">${when} • ${platform}</div>
-      <div style="margin-top:4px;">${one || "<i>Empty</i>"}</div>
-    </div>`;
+        const meta = `topic: “${escapeHtml(d.topic)}” • ${d.platform || "twitter"} • ${d.tone || "punchy"} • ${when}`;
+        const variants = (d.options || []).map((t, vi) => `
+      <div class="variant">
+        <div>${escapeHtml(t)}</div>
+        <div class="variant-actions">
+          <button class="primary" data-action="post" data-index="${idx}" data-vi="${vi}">Post this</button>
+          <button class="ghost" data-action="copy" data-index="${idx}" data-vi="${vi}">Copy</button>
+        </div>
+      </div>
+    `).join("");
+
+        return `
+      <div class="draft-card" data-id="${d.id || ''}">
+        <div class="draft-meta">${meta}</div>
+        ${variants}
+        <div class="variant-actions">
+          <button class="ghost" data-action="delete" data-index="${idx}">Delete draft</button>
+        </div>
+      </div>
+    `;
     }).join("");
 }
-chrome.storage.onChanged.addListener((changes) => {
-    if (changes.drafts) { renderDrafts(); renderDraftsList(); }
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+}
+
+draftsListEl.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const idx = Number(btn.dataset.index);
+    const vi  = Number(btn.dataset.vi || 0);
+
+    const store = await chrome.storage.local.get(["drafts","postMethod"]);
+    const drafts = store.drafts || [];
+    const method = store.postMethod || "intent";
+
+    if (action === "delete") {
+        drafts.splice(idx, 1);
+        await chrome.storage.local.set({ drafts });
+        await renderDraftsList();
+        await renderLatestDraft();
+        toast("Draft deleted");
+        return;
+    }
+
+    const d = drafts[idx];
+    if (!d) return;
+
+    if (action === "copy") {
+        await navigator.clipboard.writeText(d.options[vi]);
+        toast("Copied");
+        return;
+    }
+
+    if (action === "post") {
+        const text = d.options[vi];
+        const res = await chrome.runtime.sendMessage({ type: "SPARK_POST_TEXT", text, method });
+        toast(res?.ok ? "Posted (or composer opened)" : `Post failed: ${res?.error || "Unknown error"}`, !!res?.ok);
+    }
 });
+
+// Delete all drafts
+btnDeleteAll.addEventListener("click", async () => {
+    const { drafts = [] } = await chrome.storage.local.get(["drafts"]);
+    if (!drafts.length) return toast("No drafts to delete");
+    if (!confirm("Delete all drafts?")) return;
+    await chrome.storage.local.set({ drafts: [] });
+    await renderDraftsList();
+    await renderLatestDraft();
+    toast("All drafts deleted");
+});
+
+// Update drafts live
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.drafts) { renderLatestDraft(); renderDraftsList(); }
+});
+
+// If we’re opened as a tab with #drafts, show drafts view immediately
+if (location.hash === "#drafts") {
+    showView("drafts");
+}
 
 // ===== Compose actions =====
 document.getElementById("btn-generate").onclick = async () => {
     try {
         setLoading(true, "Generating…");
         const platform = platformEl.value;
-        const tone = toneEl.value;
+        const tone = toneEl.value;           // <-- FIXED LINE
         const clean = cleanEl.checked;
 
         let idea = inputEl.value.trim();
@@ -282,8 +375,7 @@ document.getElementById("btn-generate").onclick = async () => {
         const user = `Create a ${platform} post from this idea:\n"""${idea}"""`;
 
         const res = await promptWithOutput(
-            session,
-            [{ role: "system", content: system }, { role: "user", content: user }]
+            session, [{ role: "system", content: system }, { role: "user", content: user }]
         );
         const finalText = withLimit(res);
         outEl.textContent = finalText;
@@ -357,8 +449,7 @@ document.getElementById("btn-rewrite").onclick = async () => {
         const user = `Rewrite the following text for ${platform} while preserving meaning:\n${text}`;
 
         const res = await promptWithOutput(
-            session,
-            [{ role: "system", content: system }, { role: "user", content: user }]
+            session, [{ role: "system", content: system }, { role: "user", content: user }]
         );
         const finalText = withLimit(res);
         outEl.textContent = finalText;
@@ -376,11 +467,7 @@ document.getElementById("btn-hashtags").onclick = async () => {
         const base = inputEl.value.trim() || outEl.textContent.trim();
         if (!base) { outEl.textContent = "Generate a caption first, then add hashtags."; return; }
         const session = await ensurePromptSession();
-        const schema = {
-            type: "object",
-            properties: { tags: { type: "array", items: { type: "string" }, maxItems: 10 } },
-            required: ["tags"], additionalProperties: false
-        };
+        const schema = { type: "object", properties: { tags: { type: "array", items: { type: "string" }, maxItems: 10 } }, required: ["tags"], additionalProperties: false };
         const system = `Return compact JSON only with a 'tags' array of up to 10 platform-appropriate hashtags. No explanations.`;
         const user = `Suggest hashtags for ${platform} for this text:\n${base}`;
 
@@ -459,10 +546,22 @@ document.getElementById("btn-save-agent").onclick = async () => {
     toast("Agent settings saved");
 };
 document.getElementById("btn-run-agent").onclick = async () => {
+    // Show spinner + status
+    setLoading(true, "Running agent…");
+
     chrome.runtime.sendMessage({ type: "SPARK_AGENT_RUN_ONCE" }, (resp) => {
-        toast(resp?.ok ? "Agent run started" : (resp?.error || "Agent run failed"), !!resp?.ok);
+        if (resp?.ok) {
+            toast("Agent run completed");
+            statusEl.textContent = "Agent running in background…";
+        } else {
+            toast(resp?.error || "Agent run failed", false);
+            statusEl.textContent = "Error running agent";
+        }
+        // Restore spinner/buttons
+        setLoading(false, "Ready");
     });
 };
+
 agentEnabledEl.addEventListener("change", () => { saveSettings(); chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" }); });
 agentFrequencyEl.addEventListener("change", () => { saveSettings(); chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" }); });
 agentTopicEl.addEventListener("change", saveSettings);
@@ -488,3 +587,8 @@ btnDisconnectX.onclick = () => {
         toast("Disconnected");
     });
 };
+
+// Keep drafts UI in sync
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.drafts) { renderLatestDraft(); renderDraftsList(); }
+});

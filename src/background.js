@@ -1,6 +1,12 @@
+// src/background.js
+// Schedules agent runs; generates drafts via Prompt API (offscreen preferred, SW fallback).
+// Includes: X (Twitter) OAuth 2.0 PKCE via chrome.identity, auto-posting, Web Intent fallback.
+// Uses a server-side token proxy to satisfy X's client authentication requirement.
+
 const OFFSCREEN_URL = chrome.runtime.getURL("src/offscreen.html");
 
-const TOKEN_PROXY = "https://royal-scene-3cd4.rogerkorantenng.workers.dev";
+// >>>>>>>>>> SET THIS <<<<<<<<<<
+const TOKEN_PROXY = "https://royal-scene-3cd4.rogerkorantenng.workers.dev"; // e.g., https://spark-x-token.yourname.workers.dev
 
 // ==============================
 // Offscreen helpers
@@ -122,10 +128,11 @@ async function runAgentOnceInternal(reasonLabel = "") {
     // Save drafts
     const drafts = (await chrome.storage.local.get(["drafts"]))?.drafts || [];
     drafts.unshift({
+        id: crypto.randomUUID(),
         ts: Date.now(),
         topic,
-        platform: cfg.platform,
-        tone: cfg.tone,
+        platform: cfg.platform || "twitter",
+        tone: cfg.tone || "punchy",
         clean: !!cfg.clean,
         options
     });
@@ -134,47 +141,72 @@ async function runAgentOnceInternal(reasonLabel = "") {
 
     // Notify
     const iconUrl = chrome.runtime.getURL("assets/icon-128.png");
+    const ask = (cfg.autoPost === "ask");
     try {
-        await chrome.notifications.create({
+        const notifId = await chrome.notifications.create({
             type: "basic",
             iconUrl,
-            title: "Spark drafts ready",
-            message: `3 new ${(platform || "post")} drafts: ${topic}` + (usedOffscreen ? "" : " (SW fallback)") + (cfg.autoPost === "first" && platform === "twitter" ? " • Posting 1…" : ""),
+            title: ask ? "Pick a draft to post" : "Spark drafts ready",
+            message: ask
+                ? `Choose which variant to post for: ${topic}`
+                : `3 new ${(platform || "post")} drafts: ${topic}` + (usedOffscreen ? "" : " (SW fallback)") + (cfg.autoPost === "first" && platform === "twitter" ? " • Posting 1…" : ""),
             priority: 1
         });
+
+        // If user clicks the notification and mode is "ask", open drafts view
+        if (ask) {
+            chrome.notifications.onClicked.addListener((clickedId) => {
+                if (clickedId === notifId) openDraftsView();
+            });
+        }
     } catch (e) {
         console.warn("Notification failed:", chrome.runtime.lastError?.message || e.message);
     }
 
-    // Auto-post
-    if (cfg.autoPost === "first" && platform === "twitter") {
-        const text = options[0];
+    // Auto-post flow
+    if (platform === "twitter") {
         const method = cfg.postMethod || "intent";
-        if (method === "api" && cfg.xConnected) {
-            const okToken = await ensureValidAccessToken();
-            if (okToken.ok) {
-                const r = await postTweetViaAPI(text);
-                if (!r.ok) {
-                    console.warn("API post failed, opening Web Intent:", r.error);
-                    await openWebIntent(text);
-                }
-            } else {
-                console.warn("No valid token, opening Web Intent:", okToken.error);
-                await openWebIntent(text);
-            }
-        } else {
-            await openWebIntent(text);
+        if (cfg.autoPost === "first") {
+            const text = options[0];
+            await postTextWithMethod(text, method);
+        } else if (cfg.autoPost === "ask") {
+            // Open a full-page tab to let user select which variant to post
+            openDraftsView();
         }
+        // if "off": nothing else
     }
 
     return { ok:true };
 }
 
+function openDraftsView() {
+    const url = chrome.runtime.getURL("src/popup.html#drafts");
+    chrome.tabs.create({ url });
+}
+
 // ==============================
 // Posting helpers
 // ==============================
+async function postTextWithMethod(text, method) {
+    const cfg = await chrome.storage.local.get(["xConnected"]);
+    if (method === "api" && cfg.xConnected) {
+        const okToken = await ensureValidAccessToken();
+        if (okToken.ok) {
+            const r = await postTweetViaAPI(text);
+            if (!r.ok) {
+                console.warn("API post failed, opening Web Intent:", r.error);
+                await openWebIntent(text);
+            }
+        } else {
+            console.warn("No valid token, opening Web Intent:", okToken.error);
+            await openWebIntent(text);
+        }
+    } else {
+        await openWebIntent(text);
+    }
+}
+
 async function openWebIntent(text) {
-    // Opens a popup to twitter.com/intent/tweet with prefilled text; user clicks Tweet.
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
     await chrome.windows.create({ url, type: "popup", width: 600, height: 650, focused: true });
 }
@@ -207,7 +239,7 @@ async function safeJson(resp) {
 }
 
 // ==============================
-// OAuth (X) — PKCE flow with chrome.identity (uses server token proxy)
+// Messages
 // ==============================
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "SPARK_AGENT_RESCHEDULE") {
@@ -221,6 +253,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         xOAuthConnect_PKCE().then(sendResponse);
         return true; // async
     }
+    if (msg?.type === "SPARK_POST_TEXT") {
+        // Request from popup to post a specific variant (custom selection)
+        postTextWithMethod(String(msg.text || ""), String(msg.method || "intent"))
+            .then(r => sendResponse(r))
+            .catch(e => sendResponse({ ok:false, error:e.message }));
+        return true; // async
+    }
 });
 
 // Build a base64url string from bytes
@@ -230,7 +269,7 @@ function base64url(bytes) {
     return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-// Helpful log once so you can copy the exact redirect for the X portal.
+// Log the redirect once for portal allowlist.
 (function logRedirectForPortal() {
     try {
         const r = chrome.identity.getRedirectURL();
@@ -238,7 +277,9 @@ function base64url(bytes) {
     } catch {}
 })();
 
-// Refresh token via proxy if needed
+// ==============================
+// Token refresh via proxy
+// ==============================
 async function ensureValidAccessToken() {
     const { xAccessToken, xRefreshToken, xExpiresAt } = await chrome.storage.local.get(["xAccessToken","xRefreshToken","xExpiresAt"]);
     const now = Date.now();
@@ -283,13 +324,13 @@ async function ensureValidAccessToken() {
 
 function getClientId() {
     // Client ID is safe to expose (public). Secret stays on server.
-    return "Z0c3Ymp0bjlROWtucHR0MTlZYUE6MTpjaQ"; // <-- replace with YOUR real Client ID
+    return "Z0c3Ymp0bjlROWtucHR0MTlZYUE6MTpjaQ"; // <-- replace with YOUR real Client ID if different
 }
 
 async function xOAuthConnect_PKCE() {
     try {
-        if (!TOKEN_PROXY || TOKEN_PROXY.startsWith("https://YOUR_")) {
-            throw new Error("Set TOKEN_PROXY in background.js to your token proxy URL.");
+        if (!/^https?:\/\//.test(TOKEN_PROXY)) {
+            throw new Error("Set TOKEN_PROXY to a full https URL, e.g., https://spark-x-token.example.workers.dev");
         }
 
         const CLIENT_ID = getClientId();

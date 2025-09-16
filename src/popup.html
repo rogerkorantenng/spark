@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Spark</title>
     <style>
         :root{
@@ -18,9 +19,32 @@
         [data-theme="dark"]{ --bg:#0b0f19; --fg:#e5e7eb; --muted:#94a3b8; --card:#0f172a; --line:#1f2937;
             --btn:#0284c7; --btn-fg:#e5e7eb; --btn-hover:#0369a1; --warning:#ef4444; --ok:#10b981; --accent:#10b981;}
 
-        html,body{ margin:0; padding:0; }
-        body{ font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--fg); width: 400px; }
-        .wrap{ padding:12px; display:flex; flex-direction:column; gap:10px; }
+        /* Reset + base */
+        *,*::before,*::after{ box-sizing:border-box; }
+        html,body{ margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+
+        /* ===== POPUP defaults =====
+           Give the popup a real width so it doesn't collapse to a thin strip. */
+        .wrap{
+            width: 400px;          /* popup width */
+            max-width: 420px;
+            min-width: 360px;
+            margin: 0;             /* no centering in popup */
+            padding:12px;
+            display:flex; flex-direction:column; gap:10px;
+        }
+
+        /* ===== FULL-PAGE MODE =====
+           Activated when popup.js sets html[data-fullpage="1"] (only if URL hash is #drafts or #full) */
+        html[data-fullpage="1"] .wrap{
+            width: min(1100px, 96vw);
+            max-width: 1100px;
+            min-width: 720px;
+            margin: 0 auto;
+            padding: 24px;
+            gap: 16px;
+        }
+        html[data-fullpage="1"] .tabs{ position: sticky; top: 0; z-index: 5; }
 
         .topbar{ display:flex; align-items:center; justify-content:space-between; }
         h1{ font-size:16px; margin:0; display:flex; align-items:center; gap:8px; }
@@ -72,6 +96,21 @@
             padding:8px 10px; border-radius:10px; font-size:12px; opacity:0; transform:translateY(6px);
             transition:.25s; }
         .toast.show{ opacity:1; transform:translateY(0); }
+
+        /* Drafts manager */
+        .draft-card{ background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px; }
+        .draft-meta{ font-size:12px; color:var(--muted); margin-bottom:6px; display:flex; gap:8px; flex-wrap:wrap; }
+        .variant{ background:transparent; border:1px dashed var(--line); border-radius:8px; padding:8px; margin:6px 0; }
+        .variant-actions{ display:flex; gap:6px; margin-top:6px; }
+        .toolbar{ display:flex; gap:8px; justify-content:space-between; align-items:center; margin-bottom:6px; }
+
+        .draft-grid{ display:grid; gap:12px; }
+        @media (min-width: 720px){
+            html[data-fullpage="1"] .draft-grid{ grid-template-columns: 1fr 1fr; }
+        }
+        @media (min-width: 1140px){
+            html[data-fullpage="1"] h1{ font-size:18px; }
+        }
     </style>
 </head>
 <body>
@@ -195,8 +234,13 @@
     <!-- Drafts -->
     <section id="view-drafts" style="display:none;">
         <div class="card">
-            <div class="section-title">Recent Drafts</div>
-            <div id="draftsList" class="muted">No drafts yet.</div>
+            <div class="toolbar">
+                <div class="section-title">Recent Drafts</div>
+                <div>
+                    <button id="btn-delete-all" class="ghost" title="Delete all drafts">Delete all</button>
+                </div>
+            </div>
+            <div id="draftsList" class="muted draft-grid">No drafts yet.</div>
         </div>
     </section>
 
@@ -216,6 +260,7 @@
                     <label>Auto-post after agent</label>
                     <select id="autoPost">
                         <option value="off">Off</option>
+                        <option value="ask">Ask me (pick variant)</option>
                         <option value="first">Post first variant</option>
                     </select>
                 </div>
@@ -239,7 +284,7 @@
 
         <div class="card">
             <div class="section-title">About</div>
-            <div class="muted">Auto-posting via X API requires an X developer app and appropriate tier with write access. Web Intent opens the composer for you to confirm. See X API tiers. </div>
+            <div class="muted">Auto-posting via X API requires an X developer app and appropriate tier with write access. Web Intent opens the composer for you to confirm. See X API tiers.</div>
         </div>
     </section>
 </div>
