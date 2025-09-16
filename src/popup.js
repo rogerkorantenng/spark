@@ -1,14 +1,3 @@
-// ===== Element refs (compose) =====
-const inputEl     = document.getElementById("input");
-const outEl       = document.getElementById("out");
-const statusEl    = document.getElementById("status");
-const platformEl  = document.getElementById("platform");
-const toneEl      = document.getElementById("tone");
-const cleanEl     = document.getElementById("clean");
-const counterEl   = document.getElementById("counter");
-const meterBarEl  = document.getElementById("meterBar");
-const spinEl      = document.getElementById("spin");
-
 // ===== Tabs =====
 const tabs = [...document.querySelectorAll(".tab")];
 const views = {
@@ -38,13 +27,38 @@ document.getElementById("themeAuto").onclick  = () => applyTheme("auto");
 document.getElementById("themeLight").onclick = () => applyTheme("light");
 document.getElementById("themeDark").onclick  = () => applyTheme("dark");
 
+// ===== Compose refs =====
+const inputEl     = document.getElementById("input");
+const outEl       = document.getElementById("out");
+const statusEl    = document.getElementById("status");
+const platformEl  = document.getElementById("platform");
+const toneEl      = document.getElementById("tone");
+const cleanEl     = document.getElementById("clean");
+const counterEl   = document.getElementById("counter");
+const meterBarEl  = document.getElementById("meterBar");
+const spinEl      = document.getElementById("spin");
+
+// ===== Agent refs =====
+const agentEnabledEl   = document.getElementById("agentEnabled");
+const agentFrequencyEl = document.getElementById("agentFrequency");
+const agentTopicEl     = document.getElementById("agentTopic");
+const draftsEl         = document.getElementById("drafts");
+const draftsListEl     = document.getElementById("draftsList");
+
+// ===== Post settings refs =====
+const postMethodEl = document.getElementById("postMethod");
+const autoPostEl   = document.getElementById("autoPost");
+const xStatusEl    = document.getElementById("xStatus");
+const btnConnectX  = document.getElementById("btn-connect-x");
+const btnDisconnectX = document.getElementById("btn-disconnect-x");
+
 // ===== Spinner / buttons lock =====
 const allButtons = [...document.querySelectorAll("button")];
 function setLoading(on, msg = "") {
     statusEl.textContent = on ? (msg || "Working…") : (msg || "Ready");
     spinEl.style.display = on ? "inline-block" : "none";
     allButtons.forEach(b => {
-        if (b.id?.startsWith("theme")) return; // keep theme usable
+        if (b.id?.startsWith("theme")) return;
         b.disabled = on;
     });
 }
@@ -60,14 +74,10 @@ function toast(msg, ok=true) {
     toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 1500);
 }
 
-// ===== Autosize textarea =====
-function autosize(el) {
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 280) + "px";
-}
+// ===== Autosize & shortcuts =====
+function autosize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 280) + "px"; }
 inputEl.addEventListener("input", (e)=> autosize(e.target));
 
-// ===== Shortcuts =====
 document.addEventListener("keydown", (e) => {
     const mod = (e.ctrlKey || e.metaKey);
     if (mod && e.key === "Enter")                           { e.preventDefault(); document.getElementById("btn-generate").click(); }
@@ -85,7 +95,6 @@ const getSelection = () =>
             chrome.tabs.sendMessage(tab.id, { type: "GET_SELECTION" }, resolve);
         });
     });
-
 const getPageText = () =>
     new Promise((resolve) => {
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -93,7 +102,6 @@ const getPageText = () =>
             chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_TEXT" }, resolve);
         });
     });
-
 const insertToPage = (text) =>
     new Promise((resolve) => {
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -159,13 +167,7 @@ async function promptJSON(session, system, user, schema, language = "en") {
     try { return JSON.parse(res); } catch { return res; }
 }
 
-// ===== Settings (also agent fields) =====
-const agentEnabledEl   = document.getElementById("agentEnabled");
-const agentFrequencyEl = document.getElementById("agentFrequency");
-const agentTopicEl     = document.getElementById("agentTopic");
-const draftsEl         = document.getElementById("drafts");
-const draftsListEl     = document.getElementById("draftsList");
-
+// ===== Settings (plus agent + posting) =====
 function saveSettings(extra = {}) {
     const payload = {
         platform: platformEl.value,
@@ -174,12 +176,15 @@ function saveSettings(extra = {}) {
         agentEnabled: agentEnabledEl?.checked ?? false,
         agentFrequency: Number(agentFrequencyEl?.value || 720),
         agentTopic: agentTopicEl?.value?.trim?.() || "",
+        postMethod: postMethodEl?.value || "intent",
+        autoPost: autoPostEl?.value || "off",
         ...extra
     };
     chrome.storage?.local.set(payload);
 }
+
 chrome.storage?.local.get(
-    ["platform","tone","clean","agentEnabled","agentFrequency","agentTopic"],
+    ["platform","tone","clean","agentEnabled","agentFrequency","agentTopic","postMethod","autoPost","xConnected","xUser"],
     (cfg) => {
         if (cfg?.platform) platformEl.value = cfg.platform;
         if (cfg?.tone)     toneEl.value = cfg.tone;
@@ -188,6 +193,11 @@ chrome.storage?.local.get(
         if (typeof cfg?.agentEnabled === "boolean") agentEnabledEl.checked = cfg.agentEnabled;
         if (cfg?.agentFrequency) agentFrequencyEl.value = String(cfg.agentFrequency);
         if (cfg?.agentTopic) agentTopicEl.value = cfg.agentTopic;
+
+        if (cfg?.postMethod) postMethodEl.value = cfg.postMethod;
+        if (cfg?.autoPost)   autoPostEl.value   = cfg.autoPost;
+
+        xStatusEl.textContent = cfg?.xConnected ? `Connected${cfg.xUser ? " as @" + cfg.xUser : ""}` : "Not connected";
 
         updateCounter(inputEl.value);
         renderDrafts();
@@ -253,7 +263,7 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.drafts) { renderDrafts(); renderDraftsList(); }
 });
 
-// ===== Handlers — Compose =====
+// ===== Compose actions =====
 document.getElementById("btn-generate").onclick = async () => {
     try {
         setLoading(true, "Generating…");
@@ -280,11 +290,8 @@ document.getElementById("btn-generate").onclick = async () => {
         updateCounter(finalText);
         document.getElementById("variantsBar").style.display = "none";
         toast("Caption ready");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); }
+    finally { setLoading(false); }
 };
 
 document.getElementById("btn-variants").onclick = async () => {
@@ -321,12 +328,8 @@ document.getElementById("btn-variants").onclick = async () => {
         updateCounter(outEl.textContent.replace(/^1\)\s*/,"").split("\n\n")[0] || "");
         document.getElementById("variantsBar").style.display = "flex";
         toast("3 variants ready");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-        document.getElementById("variantsBar").style.display = "none";
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); document.getElementById("variantsBar").style.display = "none"; }
+    finally { setLoading(false); }
 };
 ["pick1","pick2","pick3"].forEach((id, idx) => {
     document.getElementById(id).onclick = () => {
@@ -362,11 +365,8 @@ document.getElementById("btn-rewrite").onclick = async () => {
         updateCounter(finalText);
         document.getElementById("variantsBar").style.display = "none";
         toast("Rewritten");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); }
+    finally { setLoading(false); }
 };
 
 document.getElementById("btn-hashtags").onclick = async () => {
@@ -390,11 +390,8 @@ document.getElementById("btn-hashtags").onclick = async () => {
         updateCounter(outEl.textContent);
         document.getElementById("variantsBar").style.display = "none";
         toast("Hashtags added");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); }
+    finally { setLoading(false); }
 };
 
 document.getElementById("btn-summarize").onclick = async () => {
@@ -417,11 +414,8 @@ document.getElementById("btn-summarize").onclick = async () => {
         updateCounter(combo);
         document.getElementById("variantsBar").style.display = "none";
         toast("Summary ready");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); }
+    finally { setLoading(false); }
 };
 
 document.getElementById("btn-translate").onclick = async () => {
@@ -444,29 +438,18 @@ document.getElementById("btn-translate").onclick = async () => {
         updateCounter(res);
         document.getElementById("variantsBar").style.display = "none";
         toast("Translated");
-    } catch (e) {
-        console.error(e);
-        outEl.textContent = `Error: ${e.message}`;
-        toast(e.message, false);
-    } finally { setLoading(false); }
+    } catch (e) { console.error(e); outEl.textContent = `Error: ${e.message}`; toast(e.message, false); }
+    finally { setLoading(false); }
 };
 
 document.getElementById("btn-copy").onclick = async () => {
-    try {
-        const text = outEl.textContent.trim();
-        if (!text) { toast("Nothing to copy", false); return; }
-        await navigator.clipboard.writeText(text);
-        toast("Copied");
-    } catch (e) { console.error(e); toast("Copy failed", false); }
+    try { const text = outEl.textContent.trim(); if (!text) return toast("Nothing to copy", false); await navigator.clipboard.writeText(text); toast("Copied"); }
+    catch (e) { console.error(e); toast("Copy failed", false); }
 };
 
 document.getElementById("btn-insert").onclick = async () => {
-    try {
-        const text = outEl.textContent.trim();
-        if (!text) { toast("Nothing to insert", false); return; }
-        const { success } = await insertToPage(text);
-        toast(success ? "Inserted into page" : "Focus a text field first", success);
-    } catch (e) { console.error(e); toast("Insert failed", false); }
+    try { const text = outEl.textContent.trim(); if (!text) return toast("Nothing to insert", false); const { success } = await insertToPage(text); toast(success ? "Inserted into page" : "Focus a text field first", success); }
+    catch (e) { console.error(e); toast("Insert failed", false); }
 };
 
 // ===== Agent controls =====
@@ -480,12 +463,28 @@ document.getElementById("btn-run-agent").onclick = async () => {
         toast(resp?.ok ? "Agent run started" : (resp?.error || "Agent run failed"), !!resp?.ok);
     });
 };
-agentEnabledEl.addEventListener("change", () => {
-    saveSettings();
-    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
-});
-agentFrequencyEl.addEventListener("change", () => {
-    saveSettings();
-    chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" });
-});
+agentEnabledEl.addEventListener("change", () => { saveSettings(); chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" }); });
+agentFrequencyEl.addEventListener("change", () => { saveSettings(); chrome.runtime.sendMessage({ type: "SPARK_AGENT_RESCHEDULE" }); });
 agentTopicEl.addEventListener("change", saveSettings);
+
+// ===== Post settings + connect/disconnect =====
+postMethodEl.addEventListener("change", saveSettings);
+autoPostEl.addEventListener("change", saveSettings);
+
+btnConnectX.onclick = () => {
+    chrome.runtime.sendMessage({ type: "X_OAUTH_CONNECT" }, (resp) => {
+        if (resp?.ok) {
+            chrome.storage.local.set({ xConnected: true, xUser: resp.user || "" });
+            xStatusEl.textContent = `Connected${resp.user ? " as @" + resp.user : ""}`;
+            toast("Connected to X");
+        } else {
+            toast(resp?.error || "Connect failed", false);
+        }
+    });
+};
+btnDisconnectX.onclick = () => {
+    chrome.storage.local.remove(["xAccessToken","xRefreshToken","xConnected","xUser"], () => {
+        xStatusEl.textContent = "Not connected";
+        toast("Disconnected");
+    });
+};

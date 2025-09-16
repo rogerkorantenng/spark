@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Spark – Creative Assistant for Socials",
-  "description": "Generate, rewrite, summarize, and translate social posts with Chrome’s built-in AI (Gemini Nano).",
-  "version": "0.2.0",
+  "description": "Generate, rewrite, summarize, translate, and auto-post with Chrome’s built-in AI (Gemini Nano).",
+  "version": "0.3.0",
   "action": { "default_title": "Open Spark", "default_popup": "src/popup.html" },
   "icons": { "128": "assets/icon-128.png" },
 
@@ -11,7 +11,8 @@
     "scripting",
     "storage",
     "alarms",
-    "notifications"
+    "notifications",
+    "identity"
   ],
 
   "host_permissions": ["<all_urls>"],

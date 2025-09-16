@@ -52,29 +52,21 @@
 
         #out{ white-space:pre-wrap; background:var(--bg); border:1px dashed var(--line); border-radius:10px; padding:10px; min-height:64px; }
 
-        /* Variants bar */
         #variantsBar{ display:none; gap:6px; margin-top:8px; flex-wrap:wrap; }
         #variantsBar button{
             padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:transparent;
             color:var(--fg); font-size:12px; cursor:pointer;
         }
 
-        /* Status + spinner */
         .statusline{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
         .status{ font-size:12px; color:var(--muted); }
         .spinner{ width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--btn); border-radius:50%; display:none; animation:spin .8s linear infinite; }
         @keyframes spin{ to{ transform:rotate(360deg); } }
 
-        /* Char meter */
         .meter{ height:6px; background:var(--line); border-radius:999px; overflow:hidden; }
         .meter > .bar{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--btn)); transition:width .15s ease; }
 
         .section-title{ font-size:12px; color:var(--muted); margin:0 0 6px 0; text-transform:uppercase; letter-spacing:.04em; }
-
-        .theme{ display:flex; align-items:center; gap:6px; }
-        .theme button{ border:1px solid var(--line); background:transparent; color:var(--muted);
-            border-radius:8px; padding:4px 8px; cursor:pointer; }
-        .theme button:hover{ color:var(--fg); border-color:var(--fg); }
 
         .toast{ position:fixed; inset:auto 12px 12px auto; background:var(--fg); color:var(--bg);
             padding:8px 10px; border-radius:10px; font-size:12px; opacity:0; transform:translateY(6px);
@@ -211,6 +203,31 @@
     <!-- Settings -->
     <section id="view-settings" style="display:none;">
         <div class="card">
+            <div class="section-title">Posting</div>
+            <div class="row">
+                <div>
+                    <label>Method</label>
+                    <select id="postMethod">
+                        <option value="intent">Web Intent (confirm manually)</option>
+                        <option value="api">X API (auto-post)</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Auto-post after agent</label>
+                    <select id="autoPost">
+                        <option value="off">Off</option>
+                        <option value="first">Post first variant</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row" style="margin-top:8px;">
+                <button id="btn-connect-x" class="primary">Connect X Account</button>
+                <button id="btn-disconnect-x" class="ghost">Disconnect</button>
+            </div>
+            <div class="muted" id="xStatus" style="margin-top:6px;">Not connected</div>
+        </div>
+
+        <div class="card">
             <div class="section-title">Appearance</div>
             <div class="row">
                 <button id="themeAuto"  class="ghost">Auto</button>
@@ -219,9 +236,10 @@
             </div>
             <div class="muted" style="margin-top:6px;">Spark follows your system theme by default.</div>
         </div>
+
         <div class="card">
             <div class="section-title">About</div>
-            <div class="muted">Built for the Google Chrome Built-in AI Challenge. Powered by on-device models.</div>
+            <div class="muted">Auto-posting via X API requires an X developer app and appropriate tier with write access. Web Intent opens the composer for you to confirm. See X API tiers. </div>
         </div>
     </section>
 </div>
