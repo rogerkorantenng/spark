@@ -1,11 +1,5 @@
-// src/background.js
-// Schedules agent runs; generates drafts via Prompt API (offscreen preferred, SW fallback).
-// Includes: X (Twitter) OAuth 2.0 PKCE via chrome.identity, auto-posting, Web Intent fallback.
-// Uses a server-side token proxy to satisfy X's client authentication requirement.
-
 const OFFSCREEN_URL = chrome.runtime.getURL("src/offscreen.html");
 
-// >>>>>>>>>> SET THIS <<<<<<<<<<
 const TOKEN_PROXY = "https://royal-scene-3cd4.rogerkorantenng.workers.dev";
 
 // ==============================
